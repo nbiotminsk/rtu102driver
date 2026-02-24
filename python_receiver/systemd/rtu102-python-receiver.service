@@ -1,0 +1,17 @@
+[Unit]
+Description=RTU102 Python UDP Receiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rtu
+WorkingDirectory=/opt/rtu102/python_receiver
+ExecStart=/usr/bin/env python3 -m rtu_receiver --config /opt/rtu102/python_receiver/config/receiver.json
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

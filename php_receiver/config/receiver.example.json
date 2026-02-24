@@ -1,0 +1,12 @@
+{
+  "listen_host": "127.0.0.1",
+  "listen_port": 5000,
+  "log_dir": "./logs",
+  "decode_enabled": true,
+  "keys": {
+    "default_hex": null,
+    "by_imei": {
+      "863703030668235": "79757975797579756f706f706f706f70"
+    }
+  }
+}

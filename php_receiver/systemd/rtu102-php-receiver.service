@@ -1,0 +1,17 @@
+[Unit]
+Description=RTU102 PHP UDP Receiver
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rtu
+WorkingDirectory=/opt/rtu102/php_receiver
+ExecStart=/usr/bin/env php /opt/rtu102/php_receiver/bin/receiver.php --config /opt/rtu102/php_receiver/config/receiver.json
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
