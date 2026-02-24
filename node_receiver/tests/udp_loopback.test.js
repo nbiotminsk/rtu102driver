@@ -12,6 +12,13 @@ import { buildFrame, buildPlainForEncrypt } from "../src/protocol.js";
 import { UdpReceiverServer } from "../src/udp_server.js";
 import { xteaEncryptEcbLE } from "../src/xtea.js";
 
+class SlowRawWriter extends JsonlWriter {
+  async writeRaw(record) {
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    return super.writeRaw(record);
+  }
+}
+
 function dateSuffixUTC() {
   const now = new Date();
   const year = now.getUTCFullYear();
@@ -81,7 +88,7 @@ test("udp loopback valid frame", async () => {
   );
 
   const cfg = await loadConfig(configPath);
-  const writer = new JsonlWriter(cfg.logDir);
+  const writer = new SlowRawWriter(cfg.logDir);
   const server = new UdpReceiverServer(cfg, writer);
 
   const serverRun = server.run(true);
