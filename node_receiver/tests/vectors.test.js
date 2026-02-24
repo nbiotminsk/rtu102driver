@@ -78,6 +78,16 @@ test("parse payload ids", () => {
   );
 });
 
+test("parse transparent channel payload id=5", () => {
+  const payload = Buffer.from("05020300aabbcc", "hex");
+  const parsed = parsePayload(payload);
+  assert.equal(parsed.records[0].id, 5);
+  assert.equal(parsed.records[0].type, "transparent_channel");
+  assert.equal(parsed.records[0].packet_type, 2);
+  assert.equal(parsed.records[0].packet_size, 3);
+  assert.equal(parsed.records[0].data_hex, "aabbcc");
+});
+
 test("parse id3 synthetic event", () => {
   const eventTime = Buffer.alloc(4);
   eventTime.writeUInt32LE(1700000000, 0);
@@ -96,6 +106,36 @@ test("build frame boundaries", () => {
   const frame = buildFrame(imei, Buffer.from("0011223344556677", "hex"));
   assert.equal(frame[0], 0xc0);
   assert.equal(frame[frame.length - 1], 0xc2);
+});
+
+test("plaintext longer than 1024 bytes is rejected", () => {
+  const imei = "863703030668235";
+  const key = Buffer.from("79757975797579756f706f706f706f70", "hex");
+  const payload = Buffer.alloc(1023, 0x11);
+  const plain = buildPlainForEncrypt(payload);
+  const frame = buildFrame(imei, xteaEncryptEcbLE(plain, key));
+
+  assert.throws(
+    () => decodeDatagram(frame, () => key),
+    (err) => err instanceof ProtocolError && err.stage === "frame" && err.reason === "plaintext_too_long",
+  );
+});
+
+test("id=1 command with zero-length payload is parse warning", () => {
+  const parsed = parsePayload(Buffer.from([1, 1, 0]));
+  assert.ok(parsed.warnings.includes("payload_parse_error"));
+  assert.equal(parsed.records[0].id, 1);
+  assert.equal(parsed.records[0].type, "unknown");
+  assert.equal(parsed.records[0].parse_error, "invalid_config_command_data_len");
+});
+
+test("telemetry item longer than 64 bytes is parse warning", () => {
+  const badItem = Buffer.concat([Buffer.from([9, 1, 1, 65]), Buffer.alloc(65, 0xaa)]);
+  const parsed = parsePayload(badItem);
+  assert.ok(parsed.warnings.includes("payload_parse_error"));
+  assert.equal(parsed.records[0].id, 9);
+  assert.equal(parsed.records[0].type, "unknown");
+  assert.equal(parsed.records[0].parse_error, "invalid_telemetry_item_len");
 });
 
 test("invalid escape sequence throws protocol error", () => {

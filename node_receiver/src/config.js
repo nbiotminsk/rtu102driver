@@ -41,6 +41,7 @@ export async function loadConfig(path) {
   const listenPort = raw.listen_port ?? 5000;
   const logDir = raw.log_dir ?? "./logs";
   const decodeEnabled = raw.decode_enabled ?? true;
+  const respondEnabled = raw.respond_enabled ?? true;
   const maxPendingDatagrams = raw.max_pending_datagrams ?? 1000;
   const keys = raw.keys ?? {};
 
@@ -55,6 +56,9 @@ export async function loadConfig(path) {
   }
   if (typeof decodeEnabled !== "boolean") {
     throw new Error("decode_enabled must be boolean");
+  }
+  if (typeof respondEnabled !== "boolean") {
+    throw new Error("respond_enabled must be boolean");
   }
   if (!Number.isInteger(maxPendingDatagrams) || maxPendingDatagrams < 1 || maxPendingDatagrams > 100000) {
     throw new Error("max_pending_datagrams must be an integer in range 1..100000");
@@ -82,6 +86,7 @@ export async function loadConfig(path) {
     listenPort,
     logDir,
     decodeEnabled,
+    respondEnabled,
     maxPendingDatagrams,
     keys: {
       defaultKey,

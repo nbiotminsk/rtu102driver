@@ -4,6 +4,9 @@ import { xteaDecryptEcbLE } from "./xtea.js";
 export const FRAME_START = 0xc0;
 export const FRAME_END = 0xc2;
 export const ESCAPE = 0xc4;
+export const MAX_PLAINTEXT_LEN = 1024;
+export const MAX_TRANSPARENT_DATA_LEN = 1024;
+export const MAX_TELEMETRY_ITEM_LEN = 64;
 
 const ESC_DECODE = new Map([
   [0xc1, 0xc0],
@@ -140,6 +143,17 @@ export function decodeDatagram(datagram, keyResolver) {
   if (plaintext.length < 2) {
     throw new ProtocolError("crc", "plaintext_too_short", { plain_len: plaintext.length }, imei);
   }
+  if (plaintext.length > MAX_PLAINTEXT_LEN) {
+    throw new ProtocolError(
+      "frame",
+      "plaintext_too_long",
+      {
+        plain_len: plaintext.length,
+        max_len: MAX_PLAINTEXT_LEN,
+      },
+      imei,
+    );
+  }
 
   const crcRecv = plaintext.readUInt16LE(plaintext.length - 2);
   const plainNoCrc = plaintext.subarray(0, plaintext.length - 2);
@@ -223,12 +237,48 @@ function parseRecord(dataId, buf, offset) {
   const warnings = [];
   const nonfatalErrors = [];
 
-  if (dataId === 1 || dataId === 6) {
-    const [paramId, value, nextOffset] = parseParamLenData(buf, offset);
+  if (dataId === 1) {
+    const [paramId, value, nextOffset] = parseParamLenData(
+      buf,
+      offset,
+      "truncated_param_len_data_header",
+      "truncated_param_len_data_value",
+      {
+        minLen: 1,
+        maxLen: 255,
+        invalidLenReason: "invalid_config_command_data_len",
+      },
+    );
     return {
       record: {
-        id: dataId,
-        type: dataId === 1 ? "config_command" : "read_command",
+        id: 1,
+        type: "config_command",
+        param_id: paramId,
+        len: value.length,
+        data_hex: value.toString("hex"),
+      },
+      offset: nextOffset,
+      warnings,
+      nonfatalErrors,
+    };
+  }
+
+  if (dataId === 6) {
+    const [paramId, value, nextOffset] = parseParamLenData(
+      buf,
+      offset,
+      "truncated_param_len_data_header",
+      "truncated_param_len_data_value",
+      {
+        minLen: 0,
+        maxLen: 255,
+        invalidLenReason: "invalid_read_command_data_len",
+      },
+    );
+    return {
+      record: {
+        id: 6,
+        type: "read_command",
         param_id: paramId,
         len: value.length,
         data_hex: value.toString("hex"),
@@ -316,6 +366,30 @@ function parseRecord(dataId, buf, offset) {
     };
   }
 
+  if (dataId === 5) {
+    requireLen(buf, offset, 3, "truncated_transparent_channel_header");
+    const packetType = buf[offset];
+    const packetSize = buf.readUInt16LE(offset + 1);
+    offset += 3;
+    if (packetSize < 1 || packetSize > MAX_TRANSPARENT_DATA_LEN) {
+      throw new Error("invalid_transparent_channel_len");
+    }
+    requireLen(buf, offset, packetSize, "truncated_transparent_channel_data");
+    const data = buf.subarray(offset, offset + packetSize);
+    return {
+      record: {
+        id: 5,
+        type: "transparent_channel",
+        packet_type: packetType,
+        packet_size: packetSize,
+        data_hex: data.toString("hex"),
+      },
+      offset: offset + packetSize,
+      warnings,
+      nonfatalErrors,
+    };
+  }
+
   if (dataId === 7) {
     requireLen(buf, offset, 3, "truncated_read_response_header");
     const paramId = buf[offset];
@@ -364,6 +438,9 @@ function parseRecord(dataId, buf, offset) {
       const paramId = buf[offset];
       const dataLen = buf[offset + 1];
       offset += 2;
+      if (dataLen < 1 || dataLen > MAX_TELEMETRY_ITEM_LEN) {
+        throw new Error("invalid_telemetry_item_len");
+      }
       requireLen(buf, offset, dataLen, "truncated_telemetry_item_data");
       const value = buf.subarray(offset, offset + dataLen);
       offset += dataLen;
@@ -426,12 +503,17 @@ function parseRecord(dataId, buf, offset) {
   };
 }
 
-function parseParamLenData(buf, offset) {
-  requireLen(buf, offset, 2, "truncated_param_len_data_header");
+function parseParamLenData(buf, offset, headerReason, valueReason, limits = null) {
+  requireLen(buf, offset, 2, headerReason);
   const paramId = buf[offset];
   const dataLen = buf[offset + 1];
   offset += 2;
-  requireLen(buf, offset, dataLen, "truncated_param_len_data_value");
+  if (limits) {
+    if (dataLen < limits.minLen || dataLen > limits.maxLen) {
+      throw new Error(limits.invalidLenReason);
+    }
+  }
+  requireLen(buf, offset, dataLen, valueReason);
   const value = buf.subarray(offset, offset + dataLen);
   return [paramId, value, offset + dataLen];
 }

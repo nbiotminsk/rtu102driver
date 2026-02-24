@@ -1,6 +1,6 @@
 # RTU102 Node.js Receiver
 
-Receive-only UDP server for TELEOFIS RTU102 protocol.
+UDP server for TELEOFIS RTU102 protocol.
 
 ## Features
 
@@ -9,10 +9,11 @@ Receive-only UDP server for TELEOFIS RTU102 protocol.
 - IMEI extraction (`uint64 LE`)
 - XTEA-ECB decryption (32 rounds, LE words)
 - CRC16-CCITT verification (`poly=0x1021`, `init=0xFFFF`)
-- Payload parsing for IDs `1,2,3,4,6,7,9`
+- Payload parsing for IDs `1,2,3,4,5,6,7,8,9`
 - Raw passthrough for IDs `8` and `10..14`
+- Protocol responses to device: telemetry ACK (`ID=9`) and archive ACK (`ID=4`)
+- Payload length checks according to spec (`<=1024`, telemetry item `1..64`)
 - JSONL logs: `raw-*`, `decoded-*`, `errors-*`
-- No outgoing UDP responses
 
 ## Requirements
 
@@ -28,6 +29,7 @@ Key fields:
 - `listen_port`
 - `log_dir`
 - `decode_enabled`
+- `respond_enabled`
 - `max_pending_datagrams` (queue limit before drop)
 - `keys.default_hex`
 - `keys.by_imei` (map IMEI to 16-byte key in hex)
@@ -102,6 +104,7 @@ npm install --omit=dev
   "listen_port": 5000,
   "log_dir": "/var/log/rtu102",
   "decode_enabled": true,
+  "respond_enabled": true,
   "max_pending_datagrams": 1000,
   "keys": {
     "default_hex": null,
@@ -183,6 +186,7 @@ npm install --omit=dev
   "listen_port": 5000,
   "log_dir": "/var/log/rtu102",
   "decode_enabled": true,
+  "respond_enabled": true,
   "max_pending_datagrams": 1000,
   "keys": {
     "default_hex": null,

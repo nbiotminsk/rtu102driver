@@ -6,15 +6,19 @@
 - PHP: [php_receiver/README.md](/Users/nikolaj/Projects/RTU102_driver/php_receiver/README.md)
 - Node.js: [node_receiver/README.md](/Users/nikolaj/Projects/RTU102_driver/rtu102driver/node_receiver/README.md)
 
-Все реализации работают в режиме `receive-only`:
+Общее для всех реализаций:
 
 - принимают UDP datagram,
 - проверяют кадр `0xC0 ... 0xC2`, байт-стаффинг,
 - извлекают IMEI,
 - расшифровывают XTEA,
 - проверяют CRC16,
-- пишут логи в JSONL,
-- не отправляют ACK/команды устройству.
+- пишут логи в JSONL.
+
+Режим ответов:
+
+- Python и PHP: `receive-only` (без исходящих UDP-ответов).
+- Node.js: поддерживает подтверждения по протоколу (`ID=9` для телеметрии, `ID=4` для архива), можно отключить через `respond_enabled: false`.
 
 ## Структура
 
@@ -159,6 +163,7 @@ npm install --omit=dev
   "listen_port": 5000,
   "log_dir": "/var/log/rtu102",
   "decode_enabled": true,
+  "respond_enabled": true,
   "max_pending_datagrams": 1000,
   "keys": {
     "default_hex": null,
@@ -243,6 +248,7 @@ npm install --omit=dev
   "listen_port": 5000,
   "log_dir": "/var/log/rtu102",
   "decode_enabled": true,
+  "respond_enabled": true,
   "max_pending_datagrams": 1000,
   "keys": {
     "default_hex": null,

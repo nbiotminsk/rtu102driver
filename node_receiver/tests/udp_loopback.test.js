@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { loadConfig } from "../src/config.js";
 import { crc16CcittFalse } from "../src/crc16.js";
 import { JsonlWriter } from "../src/jsonl.js";
-import { buildFrame, buildPlainForEncrypt } from "../src/protocol.js";
+import { buildFrame, buildPlainForEncrypt, decodeDatagram } from "../src/protocol.js";
 import { UdpReceiverServer } from "../src/udp_server.js";
 import { xteaEncryptEcbLE } from "../src/xtea.js";
 
@@ -54,6 +54,63 @@ function buildValidDatagram(imei, keyHex) {
   return buildFrame(imei, encrypted);
 }
 
+function buildArchiveDatagram(imei, keyHex, seq = 0x13) {
+  const key = Buffer.from(keyHex, "hex");
+  const eventTime = Buffer.alloc(4);
+  eventTime.writeUInt32LE(1700000000, 0);
+  const eventData = Buffer.from([0, 1, 2, 3, 4]);
+  const payload = Buffer.concat([Buffer.from([3, seq, 1]), eventTime, Buffer.from([eventData.length]), eventData]);
+  const plain = buildPlainForEncrypt(payload);
+  const encrypted = xteaEncryptEcbLE(plain, key);
+  return buildFrame(imei, encrypted);
+}
+
+async function sendAndReceive(port, datagram, host = "127.0.0.1") {
+  const sender = dgram.createSocket("udp4");
+  await new Promise((resolve) => sender.bind(0, host, resolve));
+
+  const responsePromise = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("timeout waiting for UDP response"));
+    }, 2000);
+
+    const cleanup = () => {
+      clearTimeout(timer);
+      sender.off("message", onMessage);
+      sender.off("error", onError);
+    };
+
+    const onMessage = (msg) => {
+      cleanup();
+      resolve(Buffer.from(msg));
+    };
+    const onError = (err) => {
+      cleanup();
+      reject(err);
+    };
+
+    sender.on("message", onMessage);
+    sender.on("error", onError);
+  });
+
+  await new Promise((resolve, reject) => {
+    sender.send(datagram, port, host, (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    });
+  });
+
+  try {
+    return await responsePromise;
+  } finally {
+    sender.close();
+  }
+}
+
 async function readJsonl(path) {
   const raw = await readFile(path, "utf8");
   return raw
@@ -95,17 +152,7 @@ test("udp loopback valid frame", async () => {
   await new Promise((resolve) => setTimeout(resolve, 100));
 
   const datagram = buildValidDatagram(imei, keyHex);
-  const sender = dgram.createSocket("udp4");
-  await new Promise((resolve, reject) => {
-    sender.send(datagram, port, "127.0.0.1", (err) => {
-      sender.close();
-      if (err) {
-        reject(err);
-        return;
-      }
-      resolve();
-    });
-  });
+  const response = await sendAndReceive(port, datagram);
 
   await serverRun;
   await writer.close();
@@ -136,6 +183,53 @@ test("udp loopback valid frame", async () => {
   assert.equal(decoded.frame_ok, true);
   assert.equal(decoded.crc_ok, true);
   assert.equal(decoded.records[0].id, 9);
+
+  const responseDecoded = decodeDatagram(response, () => Buffer.from(keyHex, "hex"));
+  assert.equal(responseDecoded.records[0].id, 9);
+  assert.equal(responseDecoded.records[0].count, 0);
+});
+
+test("server sends archive ack id=4 with sequence", async () => {
+  const imei = "863703030668235";
+  const keyHex = "79757975797579756f706f706f706f70";
+  const port = await pickPort();
+  const tmpPath = await mkdtemp(join(tmpdir(), "rtu_node_"));
+  const logDir = join(tmpPath, "logs");
+
+  const configPath = join(tmpPath, "receiver-archive.json");
+  await writeFile(
+    configPath,
+    JSON.stringify({
+      listen_host: "127.0.0.1",
+      listen_port: port,
+      log_dir: logDir,
+      decode_enabled: true,
+      respond_enabled: true,
+      keys: {
+        default_hex: null,
+        by_imei: {
+          [imei]: keyHex,
+        },
+      },
+    }),
+    "utf8",
+  );
+
+  const cfg = await loadConfig(configPath);
+  const writer = new JsonlWriter(cfg.logDir);
+  const server = new UdpReceiverServer(cfg, writer);
+
+  const serverRun = server.run(true);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const datagram = buildArchiveDatagram(imei, keyHex, 0x2a);
+  const response = await sendAndReceive(port, datagram);
+
+  await serverRun;
+  await writer.close();
+
+  const responseDecoded = decodeDatagram(response, () => Buffer.from(keyHex, "hex"));
+  assert.ok(responseDecoded.records.some((r) => r.id === 4 && r.seq === 0x2a));
 });
 
 test("decode errors written", async () => {

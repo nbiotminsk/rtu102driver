@@ -1,5 +1,6 @@
 import dgram from "node:dgram";
-import { decodeDatagram, ProtocolError } from "./protocol.js";
+import { decodeDatagram, ProtocolError, buildPlainForEncrypt, buildFrame, MAX_PLAINTEXT_LEN } from "./protocol.js";
+import { xteaEncryptEcbLE } from "./xtea.js";
 
 export class UdpTimeoutError extends Error {
   constructor(message = "timeout waiting for UDP datagram") {
@@ -118,6 +119,7 @@ export class UdpReceiverServer {
       const result = decodeDatagram(datagram, (imei) => this.config.keys.resolveKey(imei));
       await this.#writeDecoded(ts, srcIp, srcPort, result);
       await this.#writeNonfatalErrors(ts, srcIp, srcPort, datagramHex, result);
+      await this.#respondIfNeeded(ts, srcIp, srcPort, datagramHex, result);
     } catch (err) {
       if (!(err instanceof ProtocolError)) {
         throw err;
@@ -215,6 +217,138 @@ export class UdpReceiverServer {
         details: err.details ?? {},
       });
     }
+  }
+
+  async #respondIfNeeded(ts, srcIp, srcPort, datagramHex, result) {
+    if (!this.config.respondEnabled) {
+      return;
+    }
+    if (!this.socket || this.stopping) {
+      return;
+    }
+
+    const responsePayload = this.#buildResponsePayload(result.records);
+    if (!responsePayload) {
+      return;
+    }
+
+    const key = this.config.keys.resolveKey(result.imei);
+    if (!key) {
+      await this.writer.writeError({
+        ts_utc: ts,
+        src_ip: srcIp,
+        src_port: srcPort,
+        stage: "key_lookup",
+        reason: "missing_key_for_imei_response",
+        imei: result.imei,
+        datagram_hex: datagramHex,
+        details: { imei: result.imei },
+      });
+      return;
+    }
+    if (key.length !== 16) {
+      await this.writer.writeError({
+        ts_utc: ts,
+        src_ip: srcIp,
+        src_port: srcPort,
+        stage: "key_lookup",
+        reason: "invalid_key_length_response",
+        imei: result.imei,
+        datagram_hex: datagramHex,
+        details: { imei: result.imei, key_len: key.length },
+      });
+      return;
+    }
+
+    let responseFrame;
+    try {
+      const responsePlain = buildPlainForEncrypt(responsePayload);
+      if (responsePlain.length > MAX_PLAINTEXT_LEN) {
+        await this.writer.writeError({
+          ts_utc: ts,
+          src_ip: srcIp,
+          src_port: srcPort,
+          stage: "response_build",
+          reason: "response_plaintext_too_long",
+          imei: result.imei,
+          datagram_hex: datagramHex,
+          details: {
+            plain_len: responsePlain.length,
+            max_len: MAX_PLAINTEXT_LEN,
+            response_payload_hex: responsePayload.toString("hex"),
+          },
+        });
+        return;
+      }
+      const responseEncrypted = xteaEncryptEcbLE(responsePlain, key);
+      responseFrame = buildFrame(result.imei, responseEncrypted);
+    } catch (err) {
+      await this.writer.writeError({
+        ts_utc: ts,
+        src_ip: srcIp,
+        src_port: srcPort,
+        stage: "response_build",
+        reason: "response_build_failed",
+        imei: result.imei,
+        datagram_hex: datagramHex,
+        details: {
+          message: String(err?.message ?? err),
+          response_payload_hex: responsePayload.toString("hex"),
+        },
+      });
+      return;
+    }
+
+    try {
+      await new Promise((resolve, reject) => {
+        this.socket.send(responseFrame, srcPort, srcIp, (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve();
+        });
+      });
+    } catch (err) {
+      await this.writer.writeError({
+        ts_utc: ts,
+        src_ip: srcIp,
+        src_port: srcPort,
+        stage: "udp_send",
+        reason: "response_send_failed",
+        imei: result.imei,
+        datagram_hex: datagramHex,
+        details: {
+          message: String(err?.message ?? err),
+          response_frame_hex: responseFrame.toString("hex"),
+        },
+      });
+    }
+  }
+
+  #buildResponsePayload(records) {
+    const chunks = [];
+
+    let telemetrySeen = false;
+    for (const record of records) {
+      if (record.id === 9) {
+        telemetrySeen = true;
+      }
+    }
+    if (telemetrySeen) {
+      chunks.push(Buffer.from([9, 0]));
+    }
+
+    for (const record of records) {
+      if (record.id === 3 && Number.isInteger(record.seq) && record.seq >= 0 && record.seq <= 255) {
+        chunks.push(Buffer.from([4, record.seq]));
+      }
+    }
+
+    if (chunks.length === 0) {
+      return null;
+    }
+    return Buffer.concat(chunks);
   }
 
   async #fail(err) {
