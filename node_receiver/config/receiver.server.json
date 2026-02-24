@@ -1,0 +1,12 @@
+{
+  "listen_host": "0.0.0.0",
+  "listen_port": 5000,
+  "log_dir": "/var/log/rtu102",
+  "decode_enabled": true,
+  "keys": {
+    "default_hex": null,
+    "by_imei": {
+      "867724030459827": "706368d42f54828a4fe92117ba1c860f"
+    }
+  }
+}

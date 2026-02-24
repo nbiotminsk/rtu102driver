@@ -1,0 +1,14 @@
+[Unit]
+Description=RTU102 Node.js UDP Receiver
+After=network.target
+
+[Service]
+Type=simple
+User=rtu
+WorkingDirectory=/opt/rtu102/node_receiver
+ExecStart=/usr/bin/env node /opt/rtu102/node_receiver/bin/receiver.js --config /opt/rtu102/node_receiver/config/receiver.json
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,14 @@
+{
+  "name": "rtu102-node-receiver",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "UDP receive-only RTU102 protocol decoder",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node ./bin/receiver.js",
+    "test": "node --test"
+  }
+}
