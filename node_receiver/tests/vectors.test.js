@@ -5,8 +5,10 @@ import { crc16CcittFalse } from "../src/crc16.js";
 import {
   buildFrame,
   buildPlainForEncrypt,
+  decodeDatagram,
   parseImei,
   parsePayload,
+  ProtocolError,
   stuffPayload,
   unstuffPayload,
 } from "../src/protocol.js";
@@ -94,4 +96,24 @@ test("build frame boundaries", () => {
   const frame = buildFrame(imei, Buffer.from("0011223344556677", "hex"));
   assert.equal(frame[0], 0xc0);
   assert.equal(frame[frame.length - 1], 0xc2);
+});
+
+test("invalid escape sequence throws protocol error", () => {
+  assert.throws(
+    () => unstuffPayload(Buffer.from([0xc4, 0x99])),
+    (err) => err instanceof ProtocolError && err.stage === "unstuff" && err.reason === "invalid_escape_sequence",
+  );
+});
+
+test("missing key for imei returns key_lookup error", () => {
+  const imei = "863703030668235";
+  const key = Buffer.from("79757975797579756f706f706f706f70", "hex");
+  const payload = Buffer.from("0900", "hex");
+  const plain = buildPlainForEncrypt(payload);
+  const frame = buildFrame(imei, xteaEncryptEcbLE(plain, key));
+
+  assert.throws(
+    () => decodeDatagram(frame, () => null),
+    (err) => err instanceof ProtocolError && err.stage === "key_lookup" && err.reason === "missing_key_for_imei",
+  );
 });

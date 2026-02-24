@@ -1,49 +1,50 @@
+import { parseArgs } from "node:util";
 import { loadConfig } from "./config.js";
 import { JsonlWriter } from "./jsonl.js";
-import { UdpReceiverServer } from "./udp_server.js";
-
-function buildArgParser(argv) {
-  const args = {
-    config: null,
-    once: false,
-    logLevel: "info",
-  };
-
-  for (let i = 0; i < argv.length; i += 1) {
-    const token = argv[i];
-    if (token === "--config") {
-      args.config = argv[i + 1] ?? null;
-      i += 1;
-      continue;
-    }
-    if (token === "--once") {
-      args.once = true;
-      continue;
-    }
-    if (token === "--log-level") {
-      args.logLevel = argv[i + 1] ?? "info";
-      i += 1;
-      continue;
-    }
-    if (token === "-h" || token === "--help") {
-      args.help = true;
-      continue;
-    }
-    throw new Error(`unknown argument: ${token}`);
-  }
-
-  return args;
-}
+import { UdpReceiverServer, UdpTimeoutError } from "./udp_server.js";
 
 function printHelp() {
   // eslint-disable-next-line no-console
   console.log("Usage: receiver.js --config <path> [--once] [--log-level info|debug]");
 }
 
+function parseCliArgs(argv) {
+  const { values } = parseArgs({
+    args: argv,
+    options: {
+      config: {
+        type: "string",
+      },
+      once: {
+        type: "boolean",
+        default: false,
+      },
+      "log-level": {
+        type: "string",
+        default: "info",
+      },
+      help: {
+        type: "boolean",
+        short: "h",
+        default: false,
+      },
+    },
+    strict: true,
+    allowPositionals: false,
+  });
+
+  return {
+    config: values.config ?? null,
+    once: values.once,
+    logLevel: values["log-level"],
+    help: values.help,
+  };
+}
+
 export async function main(argv = []) {
   let args;
   try {
-    args = buildArgParser(argv);
+    args = parseCliArgs(argv);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error(String(err.message ?? err));
@@ -81,17 +82,55 @@ export async function main(argv = []) {
   const writer = new JsonlWriter(config.logDir);
   const server = new UdpReceiverServer(config, writer, args.logLevel);
 
+  let signalShutdown = null;
+  const onSignal = (signalName) => {
+    if (signalShutdown) {
+      return;
+    }
+    signalShutdown = (async () => {
+      if (args.logLevel === "debug") {
+        // eslint-disable-next-line no-console
+        console.error(`received ${signalName}, shutting down`);
+      }
+      await server.stop();
+      await writer.close();
+    })();
+  };
+
+  const sigintHandler = () => {
+    onSignal("SIGINT");
+  };
+  const sigtermHandler = () => {
+    onSignal("SIGTERM");
+  };
+  process.once("SIGINT", sigintHandler);
+  process.once("SIGTERM", sigtermHandler);
+
   try {
     await server.run(args.once);
   } catch (err) {
-    if (String(err.message ?? err) === "timeout waiting for UDP datagram") {
+    if (err instanceof UdpTimeoutError) {
       // eslint-disable-next-line no-console
-      console.error("timeout waiting for UDP datagram");
+      console.error(err.message);
       return 1;
     }
     // eslint-disable-next-line no-console
     console.error(`socket error: ${String(err.message ?? err)}`);
     return 1;
+  } finally {
+    process.removeListener("SIGINT", sigintHandler);
+    process.removeListener("SIGTERM", sigtermHandler);
+
+    if (signalShutdown) {
+      try {
+        await signalShutdown;
+      } catch {
+        // ignore signal shutdown errors, handled by run()/writer close path below
+      }
+    } else {
+      await server.stop();
+      await writer.close();
+    }
   }
 
   return 0;

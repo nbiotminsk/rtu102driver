@@ -81,7 +81,8 @@ test("udp loopback valid frame", async () => {
   );
 
   const cfg = await loadConfig(configPath);
-  const server = new UdpReceiverServer(cfg, new JsonlWriter(cfg.logDir));
+  const writer = new JsonlWriter(cfg.logDir);
+  const server = new UdpReceiverServer(cfg, writer);
 
   const serverRun = server.run(true);
   await new Promise((resolve) => setTimeout(resolve, 100));
@@ -100,6 +101,7 @@ test("udp loopback valid frame", async () => {
   });
 
   await serverRun;
+  await writer.close();
 
   const dateSuffix = dateSuffixUTC();
   const rawPath = join(logDir, `raw-${dateSuffix}.jsonl`);
@@ -166,6 +168,7 @@ test("decode errors written", async () => {
   const broken = Buffer.concat([plain.subarray(0, -2), Buffer.from([brokenCrc & 0xff, (brokenCrc >> 8) & 0xff])]);
   const badCrcDatagram = buildFrame(imei, xteaEncryptEcbLE(broken, key));
   await server.handleDatagram(badCrcDatagram, "127.0.0.1", 22222);
+  await writer.close();
 
   const dateSuffix = dateSuffixUTC();
   const errorsPath = join(logDir, `errors-${dateSuffix}.jsonl`);
@@ -175,4 +178,113 @@ test("decode errors written", async () => {
   const reasons = new Set(errors.map((e) => `${e.stage}:${e.reason}`));
   assert.ok(reasons.has("frame:invalid_boundaries"));
   assert.ok(reasons.has("crc:crc_mismatch"));
+});
+
+test("decode disabled writes only raw stream", async () => {
+  const imei = "863703030668235";
+  const keyHex = "79757975797579756f706f706f706f70";
+  const tmpPath = await mkdtemp(join(tmpdir(), "rtu_node_"));
+  const logDir = join(tmpPath, "logs");
+
+  const cfgPath = join(tmpPath, "cfg-disable.json");
+  await writeFile(
+    cfgPath,
+    JSON.stringify({
+      listen_host: "127.0.0.1",
+      listen_port: 5002,
+      log_dir: logDir,
+      decode_enabled: false,
+      keys: {
+        default_hex: null,
+        by_imei: {
+          [imei]: keyHex,
+        },
+      },
+    }),
+    "utf8",
+  );
+
+  const cfg = await loadConfig(cfgPath);
+  const writer = new JsonlWriter(cfg.logDir);
+  const server = new UdpReceiverServer(cfg, writer);
+
+  await server.handleDatagram(Buffer.from([0xc0, 0xc2]), "127.0.0.1", 33333);
+  await writer.close();
+
+  const dateSuffix = dateSuffixUTC();
+  const rawPath = join(logDir, `raw-${dateSuffix}.jsonl`);
+  const decodedPath = join(logDir, `decoded-${dateSuffix}.jsonl`);
+  const errorsPath = join(logDir, `errors-${dateSuffix}.jsonl`);
+
+  const rawRecords = await readJsonl(rawPath);
+  assert.equal(rawRecords.length, 1);
+
+  await assert.rejects(readFile(decodedPath, "utf8"));
+  await assert.rejects(readFile(errorsPath, "utf8"));
+});
+
+test("queue overflow is logged as transport_queue error", async () => {
+  const port = await pickPort();
+  const tmpPath = await mkdtemp(join(tmpdir(), "rtu_node_"));
+  const logDir = join(tmpPath, "logs");
+
+  const cfgPath = join(tmpPath, "cfg-overflow.json");
+  await writeFile(
+    cfgPath,
+    JSON.stringify({
+      listen_host: "127.0.0.1",
+      listen_port: port,
+      log_dir: logDir,
+      decode_enabled: false,
+      max_pending_datagrams: 1,
+      keys: {
+        default_hex: null,
+        by_imei: {},
+      },
+    }),
+    "utf8",
+  );
+
+  const cfg = await loadConfig(cfgPath);
+  const writer = new JsonlWriter(cfg.logDir);
+  const server = new UdpReceiverServer(cfg, writer);
+
+  const runPromise = server.run(false);
+  await new Promise((resolve) => setTimeout(resolve, 100));
+
+  const sender = dgram.createSocket("udp4");
+  const sendOne = (data) => new Promise((resolve, reject) => {
+    sender.send(data, port, "127.0.0.1", (err) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve();
+    });
+  });
+
+  const payload = Buffer.from([1, 2, 3, 4]);
+  await Promise.all([
+    sendOne(payload),
+    sendOne(payload),
+    sendOne(payload),
+    sendOne(payload),
+    sendOne(payload),
+  ]);
+  sender.close();
+
+  await waitFor(async () => {
+    const dateSuffix = dateSuffixUTC();
+    const errorsPath = join(logDir, `errors-${dateSuffix}.jsonl`);
+    try {
+      const errors = await readJsonl(errorsPath);
+      return errors.some((e) => e.stage === "transport_queue" && e.reason === "queue_overflow");
+    } catch {
+      return false;
+    }
+  }, 4000);
+
+  await server.stop();
+  await runPromise;
+  await writer.close();
 });
