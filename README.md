@@ -199,6 +199,93 @@ sudo systemctl status rtu102-node-receiver
 journalctl -u rtu102-node-receiver -f
 ```
 
+## Timeweb VPS: пошаговый запуск
+
+1. Создайте сервер в панели Timeweb Cloud:
+   - `Облачные серверы` -> `Создать сервер`,
+   - образ: Ubuntu 22.04/24.04,
+   - включите публичный IPv4.
+2. Подключитесь по SSH:
+
+```bash
+ssh root@<IP_СЕРВЕРА>
+```
+
+3. Установите Node.js 22:
+
+```bash
+apt update
+apt install -y curl ca-certificates gnupg
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+apt install -y nodejs
+node -v
+```
+
+4. Загрузите проект на VPS:
+
+```bash
+scp -r /Users/nikolaj/Projects/RTU102_driver/rtu102driver/node_receiver root@<IP_СЕРВЕРА>:/opt/rtu102/
+```
+
+5. Подготовьте приложение на сервере:
+
+```bash
+cd /opt/rtu102/node_receiver
+npm install --omit=dev
+```
+
+6. Создайте конфиг `/opt/rtu102/node_receiver/config/receiver.server.json`:
+
+```json
+{
+  "listen_host": "0.0.0.0",
+  "listen_port": 5000,
+  "log_dir": "/var/log/rtu102",
+  "decode_enabled": true,
+  "keys": {
+    "default_hex": null,
+    "by_imei": {
+      "867724030459827": "706368d42f54828a4fe92117ba1c860f"
+    }
+  }
+}
+```
+
+7. Создайте пользователя и директорию логов:
+
+```bash
+useradd --system --no-create-home --shell /usr/sbin/nologin rtu || true
+mkdir -p /var/log/rtu102
+chown -R rtu:rtu /var/log/rtu102 /opt/rtu102/node_receiver
+```
+
+8. Установите и запустите `systemd`-сервис:
+
+```bash
+cp /opt/rtu102/node_receiver/systemd/rtu102-node-receiver.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now rtu102-node-receiver
+systemctl status rtu102-node-receiver
+```
+
+9. В панели Timeweb откройте firewall:
+   - `Сети` -> `Firewall` -> `Добавить`,
+   - протокол `UDP`,
+   - порт `5000`,
+   - источник `0.0.0.0/0` (или ограничьте подсетью),
+   - привяжите правило к вашему VPS.
+10. В конфигураторе RTU102 укажите:
+   - сервер: `<IP_СЕРВЕРА>`,
+   - порт: `5000`,
+   - ключ: `706368d42f54828a4fe92117ba1c860f`.
+
+Проверка входящих пакетов:
+
+```bash
+journalctl -u rtu102-node-receiver -f
+tail -f /var/log/rtu102/raw-$(date -u +%Y%m%d).jsonl
+```
+
 ## Логи
 
 Все реализации пишут в `log_dir` три потока:

@@ -141,6 +141,85 @@ sudo systemctl status rtu102-node-receiver
 journalctl -u rtu102-node-receiver -f
 ```
 
+## Timeweb VPS (Step-by-Step)
+
+1. In Timeweb Cloud panel create a VPS (`Cloud Servers` -> `Create server`) with Ubuntu 22.04/24.04 and public IPv4.
+2. Connect by SSH:
+
+```bash
+ssh root@<SERVER_IP>
+```
+
+3. Install Node.js 22:
+
+```bash
+apt update
+apt install -y curl ca-certificates gnupg
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+apt install -y nodejs
+node -v
+```
+
+4. Upload project directory from local machine:
+
+```bash
+scp -r /Users/nikolaj/Projects/RTU102_driver/rtu102driver/node_receiver root@<SERVER_IP>:/opt/rtu102/
+```
+
+5. Install dependencies on VPS:
+
+```bash
+cd /opt/rtu102/node_receiver
+npm install --omit=dev
+```
+
+6. Create `/opt/rtu102/node_receiver/config/receiver.server.json`:
+
+```json
+{
+  "listen_host": "0.0.0.0",
+  "listen_port": 5000,
+  "log_dir": "/var/log/rtu102",
+  "decode_enabled": true,
+  "keys": {
+    "default_hex": null,
+    "by_imei": {
+      "867724030459827": "706368d42f54828a4fe92117ba1c860f"
+    }
+  }
+}
+```
+
+7. Create user and log directory:
+
+```bash
+useradd --system --no-create-home --shell /usr/sbin/nologin rtu || true
+mkdir -p /var/log/rtu102
+chown -R rtu:rtu /var/log/rtu102 /opt/rtu102/node_receiver
+```
+
+8. Install and start systemd service:
+
+```bash
+cp /opt/rtu102/node_receiver/systemd/rtu102-node-receiver.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now rtu102-node-receiver
+systemctl status rtu102-node-receiver
+```
+
+9. In Timeweb panel open firewall for incoming UDP `5000` and attach rule to this VPS.
+10. In RTU102 configurator set:
+    - server: `<SERVER_IP>`
+    - port: `5000`
+    - key: `706368d42f54828a4fe92117ba1c860f`
+
+Check incoming traffic:
+
+```bash
+journalctl -u rtu102-node-receiver -f
+tail -f /var/log/rtu102/raw-$(date -u +%Y%m%d).jsonl
+```
+
 ## Tests
 
 ```bash
