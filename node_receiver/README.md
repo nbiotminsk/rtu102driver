@@ -28,6 +28,7 @@ Key fields:
 - `listen_port`
 - `log_dir`
 - `decode_enabled`
+- `max_pending_datagrams` (queue limit before drop)
 - `keys.default_hex`
 - `keys.by_imei` (map IMEI to 16-byte key in hex)
 
@@ -101,6 +102,7 @@ npm install --omit=dev
   "listen_port": 5000,
   "log_dir": "/var/log/rtu102",
   "decode_enabled": true,
+  "max_pending_datagrams": 1000,
   "keys": {
     "default_hex": null,
     "by_imei": {
@@ -181,6 +183,7 @@ npm install --omit=dev
   "listen_port": 5000,
   "log_dir": "/var/log/rtu102",
   "decode_enabled": true,
+  "max_pending_datagrams": 1000,
   "keys": {
     "default_hex": null,
     "by_imei": {

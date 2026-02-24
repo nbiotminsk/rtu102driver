@@ -88,7 +88,7 @@ test("udp loopback valid frame", async () => {
   );
 
   const cfg = await loadConfig(configPath);
-  const writer = new SlowRawWriter(cfg.logDir);
+  const writer = new JsonlWriter(cfg.logDir);
   const server = new UdpReceiverServer(cfg, writer);
 
   const serverRun = server.run(true);
@@ -253,7 +253,7 @@ test("queue overflow is logged as transport_queue error", async () => {
   );
 
   const cfg = await loadConfig(cfgPath);
-  const writer = new JsonlWriter(cfg.logDir);
+  const writer = new SlowRawWriter(cfg.logDir);
   const server = new UdpReceiverServer(cfg, writer);
 
   const runPromise = server.run(false);

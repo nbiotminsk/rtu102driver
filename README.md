@@ -159,6 +159,7 @@ npm install --omit=dev
   "listen_port": 5000,
   "log_dir": "/var/log/rtu102",
   "decode_enabled": true,
+  "max_pending_datagrams": 1000,
   "keys": {
     "default_hex": null,
     "by_imei": {
@@ -242,6 +243,7 @@ npm install --omit=dev
   "listen_port": 5000,
   "log_dir": "/var/log/rtu102",
   "decode_enabled": true,
+  "max_pending_datagrams": 1000,
   "keys": {
     "default_hex": null,
     "by_imei": {

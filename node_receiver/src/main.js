@@ -106,32 +106,36 @@ export async function main(argv = []) {
   process.once("SIGINT", sigintHandler);
   process.once("SIGTERM", sigtermHandler);
 
+  let exitCode = 0;
   try {
     await server.run(args.once);
   } catch (err) {
     if (err instanceof UdpTimeoutError) {
       // eslint-disable-next-line no-console
       console.error(err.message);
-      return 1;
+      exitCode = 1;
+    } else {
+      // eslint-disable-next-line no-console
+      console.error(`socket error: ${String(err.message ?? err)}`);
+      exitCode = 1;
     }
-    // eslint-disable-next-line no-console
-    console.error(`socket error: ${String(err.message ?? err)}`);
-    return 1;
   } finally {
     process.removeListener("SIGINT", sigintHandler);
     process.removeListener("SIGTERM", sigtermHandler);
 
-    if (signalShutdown) {
-      try {
+    try {
+      if (signalShutdown) {
         await signalShutdown;
-      } catch {
-        // ignore signal shutdown errors, handled by run()/writer close path below
+      } else {
+        await server.stop();
+        await writer.close();
       }
-    } else {
-      await server.stop();
-      await writer.close();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(`shutdown error: ${String(err.message ?? err)}`);
+      exitCode = 1;
     }
   }
 
-  return 0;
+  return exitCode;
 }
