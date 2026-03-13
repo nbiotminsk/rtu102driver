@@ -1,11 +1,15 @@
 import { parseArgs } from "node:util";
 import { loadConfig } from "./config.js";
 import { JsonlWriter } from "./jsonl.js";
+import { parseHexDump, probeDatagramKey } from "./key_probe.js";
 import { UdpReceiverServer, UdpTimeoutError } from "./udp_server.js";
 
 function printHelp() {
   // eslint-disable-next-line no-console
-  console.log("Usage: receiver.js --config <path> [--once] [--log-level info|debug]");
+  console.log(
+    "Usage: receiver.js --config <path> [--once] [--log-level info|debug]\n" +
+      "   or: receiver.js --probe-dump <hex> [--pin <value>] [--imei <value>] [--login <value>] [--password <value>]",
+  );
 }
 
 function parseCliArgs(argv) {
@@ -13,6 +17,21 @@ function parseCliArgs(argv) {
     args: argv,
     options: {
       config: {
+        type: "string",
+      },
+      "probe-dump": {
+        type: "string",
+      },
+      imei: {
+        type: "string",
+      },
+      pin: {
+        type: "string",
+      },
+      login: {
+        type: "string",
+      },
+      password: {
         type: "string",
       },
       once: {
@@ -35,10 +54,44 @@ function parseCliArgs(argv) {
 
   return {
     config: values.config ?? null,
+    probeDump: values["probe-dump"] ?? null,
+    imei: values.imei ?? null,
+    pin: values.pin ?? null,
+    login: values.login ?? "teleofis",
+    password: values.password ?? "0000000000000000",
     once: values.once,
     logLevel: values["log-level"],
     help: values.help,
   };
+}
+
+function runProbe(args) {
+  let datagram;
+  try {
+    datagram = parseHexDump(args.probeDump);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`probe error: ${String(err.message ?? err)}`);
+    return 2;
+  }
+
+  let result;
+  try {
+    result = probeDatagramKey(datagram, {
+      imei: args.imei,
+      pin: args.pin,
+      login: args.login,
+      password: args.password,
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`probe error: ${String(err.message ?? err)}`);
+    return 1;
+  }
+
+  // eslint-disable-next-line no-console
+  console.log(JSON.stringify(result, null, 2));
+  return result.matches.length > 0 ? 0 : 1;
 }
 
 export async function main(argv = []) {
@@ -55,6 +108,10 @@ export async function main(argv = []) {
   if (args.help) {
     printHelp();
     return 0;
+  }
+
+  if (args.probeDump) {
+    return runProbe(args);
   }
 
   if (!args.config) {

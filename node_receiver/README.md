@@ -77,6 +77,40 @@ One datagram mode:
 node ./bin/receiver.js --config ./config/receiver.example.json --once --log-level debug
 ```
 
+## Probe Candidate Keys
+
+Use probe mode to test candidate XTEA keys against a captured RTU frame. The utility:
+
+- extracts IMEI from the frame,
+- generates candidate 16-byte keys from `IMEI`, `PIN`, login, password and their combinations,
+- decrypts the payload and accepts only keys with valid CRC.
+
+Defaults for probe mode:
+
+- login: `teleofis`
+- password: `0000000000000000`
+
+Example:
+
+```bash
+node ./bin/receiver.js \
+  --probe-dump "0xC0 0xB3 ..." \
+  --pin 1964
+```
+
+Optional overrides:
+
+```bash
+node ./bin/receiver.js \
+  --probe-dump "0xC0 0xB3 ..." \
+  --imei 867724030459827 \
+  --pin 1964 \
+  --login teleofis \
+  --password 0000000000000000
+```
+
+Exit code is `0` when at least one key matches CRC, otherwise `1`.
+
 ## Run On Server (24/7)
 
 1. Check Node.js version:

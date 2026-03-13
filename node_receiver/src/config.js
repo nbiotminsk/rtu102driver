@@ -8,10 +8,15 @@ function parseHexKey(hexValue, field, allowNull = true) {
     throw new Error(`${field} cannot be null`);
   }
   if (typeof hexValue !== "string") {
-    throw new Error(`${field} must be null or hex string`);
+    throw new Error(`${field} must be null or key string`);
   }
+
+  if (hexValue.length === 16) {
+    return Buffer.from(hexValue, "ascii");
+  }
+
   if (hexValue.length !== 32) {
-    throw new Error(`${field} must be exactly 32 hex characters`);
+    throw new Error(`${field} must be exactly 32 hex characters or 16 ASCII characters`);
   }
   if (!/^[0-9a-fA-F]+$/.test(hexValue)) {
     throw new Error(`${field} must be valid hex`);
