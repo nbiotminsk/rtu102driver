@@ -1,5 +1,6 @@
 import { parseArgs } from "node:util";
 import { loadConfig } from "./config.js";
+import { decodeDump } from "./decode_dump.js";
 import { JsonlWriter } from "./jsonl.js";
 import { parseHexDump, probeDatagramKey } from "./key_probe.js";
 import { UdpReceiverServer, UdpTimeoutError } from "./udp_server.js";
@@ -8,7 +9,8 @@ function printHelp() {
   // eslint-disable-next-line no-console
   console.log(
     "Usage: receiver.js --config <path> [--once] [--log-level info|debug]\n" +
-      "   or: receiver.js --probe-dump <hex> [--pin <value>] [--imei <value>] [--login <value>] [--password <value>]",
+      "   or: receiver.js --probe-dump <hex> [--pin <value>] [--imei <value>] [--login <value>] [--password <value>]\n" +
+      "   or: receiver.js --decode-dump <hex> --key <value>",
   );
 }
 
@@ -20,6 +22,12 @@ function parseCliArgs(argv) {
         type: "string",
       },
       "probe-dump": {
+        type: "string",
+      },
+      "decode-dump": {
+        type: "string",
+      },
+      key: {
         type: "string",
       },
       imei: {
@@ -55,6 +63,8 @@ function parseCliArgs(argv) {
   return {
     config: values.config ?? null,
     probeDump: values["probe-dump"] ?? null,
+    decodeDump: values["decode-dump"] ?? null,
+    key: values.key ?? null,
     imei: values.imei ?? null,
     pin: values.pin ?? null,
     login: values.login ?? "teleofis",
@@ -94,6 +104,27 @@ function runProbe(args) {
   return result.matches.length > 0 ? 0 : 1;
 }
 
+function runDecodeDump(args) {
+  if (!args.key) {
+    // eslint-disable-next-line no-console
+    console.error("decode error: --key is required");
+    return 2;
+  }
+
+  let result;
+  try {
+    result = decodeDump(args.decodeDump, args.key);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`decode error: ${String(err.message ?? err)}`);
+    return 1;
+  }
+
+  // eslint-disable-next-line no-console
+  console.log(JSON.stringify(result, null, 2));
+  return 0;
+}
+
 export async function main(argv = []) {
   let args;
   try {
@@ -112,6 +143,10 @@ export async function main(argv = []) {
 
   if (args.probeDump) {
     return runProbe(args);
+  }
+
+  if (args.decodeDump) {
+    return runDecodeDump(args);
   }
 
   if (!args.config) {

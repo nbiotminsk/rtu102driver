@@ -47,11 +47,32 @@ Example:
 }
 ```
 
+### Key Format In Node.js Config
+
+Node.js version accepts both key formats in JSON:
+
+- `32` hex characters, for example `4f9c2d0ab3e17c55a8d2f0b19c6e4a73`
+- `16` ASCII characters, for example `1234567891234567`
+
+ASCII example:
+
+```json
+{
+  "keys": {
+    "default_hex": null,
+    "by_imei": {
+      "867724030459827": "1234567891234567"
+    }
+  }
+}
+```
+
 ### Ключ в конфигураторе устройства
 
 В поле `Ключ` укажите XTEA-ключ:
 
-- `32` hex-символа (`16` байт),
+- `16` ASCII-символов, если конфигуратор принимает только цифры/текст,
+- или `32` hex-символа (`16` байт), если поле работает именно в hex-режиме,
 - без пробелов,
 - без `0x`.
 
@@ -62,6 +83,8 @@ Example:
 ```
 
 Ключ на устройстве и ключ в серверном JSON должны быть одинаковыми.
+
+Разбор реального пакета с ключом `1234567891234567` лежит в [README_PACKET_DECODE.md](/Users/nikolaj/Projects/RTU102_driver/rtu102driver/README_PACKET_DECODE.md).
 
 ## Run
 
@@ -110,6 +133,29 @@ node ./bin/receiver.js \
 ```
 
 Exit code is `0` when at least one key matches CRC, otherwise `1`.
+
+## Decode Dump
+
+Use decode mode when the key is already known and you want a readable JSON dump of the packet:
+
+```bash
+node ./bin/receiver.js \
+  --decode-dump "0xC0 0xB3 ..." \
+  --key 1234567891234567
+```
+
+`--key` accepts:
+
+- `16` ASCII characters
+- `32` hex characters
+
+The output contains:
+
+- IMEI
+- CRC status
+- `payload_hex`
+- parsed records
+- telemetry items with decoded scalar values
 
 ## Run On Server (24/7)
 

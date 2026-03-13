@@ -23,6 +23,7 @@
 ## Структура
 
 - [RTU102_NBIOT_LLM_GUIDE.md](/Users/nikolaj/Projects/RTU102_driver/RTU102_NBIOT_LLM_GUIDE.md) — подробное описание протокола и практики.
+- [README_PACKET_DECODE.md](/Users/nikolaj/Projects/RTU102_driver/rtu102driver/README_PACKET_DECODE.md) — разбор реального входящего пакета с ключом `1234567891234567`.
 - [python_receiver](/Users/nikolaj/Projects/RTU102_driver/python_receiver) — Python сервер.
 - [php_receiver](/Users/nikolaj/Projects/RTU102_driver/php_receiver) — PHP сервер.
 - [node_receiver](/Users/nikolaj/Projects/RTU102_driver/rtu102driver/node_receiver) — Node.js сервер.
@@ -53,6 +54,12 @@
 - длина ключа: `32` hex символа (`16` байт).
 
 Важно: ключ в конфигураторе устройства и ключ на сервере должны совпадать.
+
+Примечание по Node.js версии:
+
+- [node_receiver](/Users/nikolaj/Projects/RTU102_driver/rtu102driver/node_receiver) поддерживает два формата ключа в JSON:
+- `32` hex-символа
+- `16` ASCII-символов, например `1234567891234567`
 
 ## Как генерировать ключ
 

@@ -27,3 +27,8 @@ test("main returns 2 for missing config file", async () => {
   const code = await main(["--config", "/tmp/does-not-exist-receiver.json"]);
   assert.equal(code, 2);
 });
+
+test("main returns 2 for decode mode without key", async () => {
+  const code = await main(["--decode-dump", "0xC0 0x00 0xC2"]);
+  assert.equal(code, 2);
+});
