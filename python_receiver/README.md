@@ -77,6 +77,38 @@ Then run:
 python3 -m rtu_receiver --config ./config/receiver.example.json
 ```
 
+## Counter Viewer
+
+For a local GUI that decodes one packet and shows only counters 1..4:
+
+```bash
+python3 ./counter_viewer.py
+```
+
+Input:
+
+- packet hex dump (`0xC0 0x...` or plain hex)
+- XTEA key (`16` ASCII chars or `32` hex chars)
+
+Output:
+
+- IMEI
+- source type (`telemetry` or `archive`)
+- counters 1..4
+
+## Counter CLI
+
+For a simple terminal workflow:
+
+```bash
+python3 ./decode_counters.py
+```
+
+The script asks for:
+
+1. XTEA key
+2. packet hex dump
+
 One datagram mode (for tests):
 
 ```bash
